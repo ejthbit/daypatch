@@ -2,6 +2,10 @@
 
 Each release's notes come from its section here (the release workflow requires one).
 
+## 0.12.2
+
+- 🩹 The sidebar URL bar and ← → ↻ buttons appear when Dia ✦ starts, not only after switching with ⌃⌘U.
+
 ## 0.12.1
 
 - 🔐 DayPatch is signed with the hardened runtime, so other programs can't inject code into it through `DYLD_INSERT_LIBRARIES` and use its App Management permission.

@@ -237,17 +237,22 @@ static void applyContainer(NSView *c) {
     }
 }
 
-static void hookedLayout(NSView *self, SEL _cmd) {
-    origLayout(self, _cmd);
-    [gContainers addObject:self];
-    BOOL had = barFor(self).superview != nil;
-    applyContainer(self);
-    // The top bar's visibility depends on whether this window has a sidebar URL bar.
-    // Deferred: we're inside a layout pass.
-    if (had != (barFor(self).superview != nil))
+// Adds or removes the bar; if that changed, the top bar re-evaluates its visibility
+// (it depends on whether this window has a sidebar URL bar). Deferred: callers may be
+// inside a layout pass.
+static void reapplyContainer(NSView *c) {
+    BOOL had = barFor(c).superview != nil;
+    applyContainer(c);
+    if (had != (barFor(c).superview != nil))
         dispatch_async(dispatch_get_main_queue(), ^{
             [NSNotificationCenter.defaultCenter postNotificationName:TweakSettingsDidChangeNotification object:nil];
         });
+}
+
+static void hookedLayout(NSView *self, SEL _cmd) {
+    origLayout(self, _cmd);
+    [gContainers addObject:self];
+    reapplyContainer(self);
 }
 
 static TweakSidebarURLBar *visibleBar(NSWindow *window) {
@@ -269,8 +274,15 @@ void TweakSidebarInstall(void) {
     origLayout = (void *)TweakHook(cls, @selector(layout), (IMP)hookedLayout);
     // Refresh on navigation-ish events: Dia's window title follows the active tab's
     // page title, and switching windows/tabs changes it too. A slow timer covers
-    // pages that change URL without changing title.
-    void (^refreshAll)(void) = ^{ for (NSView *c in gContainers.allObjects) [barFor(c) refresh]; };
+    // pages that change URL without changing title. Re-applying here too: at launch
+    // the container's first layouts run before the sidebar is ready, and nothing
+    // lays it out again.
+    void (^refreshAll)(void) = ^{
+        for (NSView *c in gContainers.allObjects) {
+            reapplyContainer(c);
+            [barFor(c) refresh];
+        }
+    };
     gTitleObserver = [TweakTitleObserver new];
     gTitleObserver.onChange = refreshAll;
     for (NSNotificationName n in @[NSWindowDidBecomeKeyNotification, NSWindowDidBecomeMainNotification, NSWindowDidUpdateNotification])
