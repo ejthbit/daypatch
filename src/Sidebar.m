@@ -166,9 +166,12 @@ static NSColor *dyn(CGFloat darkWhite, CGFloat darkAlpha, CGFloat lightWhite, CG
     [self.watched addObject:w];
     [w addObserver:self forKeyPath:@"title" options:0 context:NULL];
     __weak typeof(self) weakSelf = self;
-    __unsafe_unretained NSWindow *unretained = w;
-    [NSNotificationCenter.defaultCenter addObserverForName:NSWindowWillCloseNotification object:w queue:nil usingBlock:^(__unused NSNotification *n) {
-        [unretained removeObserver:weakSelf forKeyPath:@"title"];
+    __weak NSWindow *weakWindow = w;
+    __block id token = [NSNotificationCenter.defaultCenter addObserverForName:NSWindowWillCloseNotification object:w queue:nil usingBlock:^(__unused NSNotification *n) {
+        [weakWindow removeObserver:weakSelf forKeyPath:@"title"];
+        [weakSelf.watched removeObject:weakWindow];
+        [NSNotificationCenter.defaultCenter removeObserver:token];
+        token = nil;  // breaks the token -> block -> token cycle
     }];
 }
 - (void)observeValueForKeyPath:(NSString *)k ofObject:(id)o change:(NSDictionary *)c context:(void *)ctx {

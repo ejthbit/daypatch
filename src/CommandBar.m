@@ -197,6 +197,7 @@ static NSColor *detailColor(void) { return dyn(1, 0.58, 0, 0.64); }
 @property (nonatomic) TweakCommandBarMode mode;
 @property (nonatomic, copy) NSString *typed;       // what the user typed (without inline completion)
 @property (nonatomic) BOOL suppressCompletion;     // after a deletion
+@property (nonatomic, copy) NSString *shownQuery;  // the query the listed results belong to
 @end
 
 @implementation TweakCommandBar
@@ -318,8 +319,10 @@ static NSColor *detailColor(void) { return dyn(1, 0.58, 0, 0.64); }
 }
 
 - (void)windowDidResignKey:(NSNotification *)n {
-    // Clicking outside closes it, like Arc.
-    if (self.panel.isVisible) [self close];
+    // Clicking outside closes it, like Arc; the window that took key keeps it.
+    if (!self.panel.isVisible) return;
+    [self.host removeChildWindow:self.panel];
+    [self.panel orderOut:nil];
 }
 
 #pragma mark Querying
@@ -330,6 +333,7 @@ static NSColor *detailColor(void) { return dyn(1, 0.58, 0, 0.64); }
     [self.sources query:q done:^(NSArray<TweakItem *> *items) {
         typeof(self) s = weakSelf;
         if (![s.typed isEqualToString:q]) return;
+        s.shownQuery = q;
         [s showItems:items];
         [s applyCompletionFrom:items];
     }];
@@ -363,7 +367,7 @@ static NSColor *detailColor(void) { return dyn(1, 0.58, 0, 0.64); }
 - (void)controlTextDidChange:(NSNotification *)n {
     NSString *now = self.field.stringValue;
     // Deleting shouldn't immediately re-complete what was just removed.
-    self.suppressCompletion = now.length < self.typed.length && [self.typed hasPrefix:now];
+    self.suppressCompletion = now.length <= self.typed.length && [self.typed hasPrefix:now];
     self.typed = now;
     [self runQuery];
 }
@@ -387,7 +391,9 @@ static NSColor *detailColor(void) { return dyn(1, 0.58, 0, 0.64); }
         BOOL newTab = (NSApp.currentEvent.modifierFlags & NSEventModifierFlagCommand) != 0;
         // An inline completion is showing and the top row is still selected: go to it.
         BOOL completed = ![tv.string isEqualToString:self.typed] && self.results.selected == 0;
-        [self activateRow:completed ? -1 : self.results.selected forceNewTab:newTab];
+        // Results for what's typed haven't arrived yet: the listed rows are for older text.
+        BOOL stale = ![self.shownQuery isEqualToString:self.typed];
+        [self activateRow:completed || stale ? -1 : self.results.selected forceNewTab:newTab];
         return YES;
     }
     if (sel == @selector(cancelOperation:)) { [self close]; return YES; }
@@ -401,14 +407,14 @@ static NSColor *detailColor(void) { return dyn(1, 0.58, 0, 0.64); }
 - (void)activateRow:(NSInteger)row forceNewTab:(BOOL)forceNewTab {
     NSWindow *w = self.host;
     TweakItem *it = row >= 0 && row < (NSInteger)self.results.items.count ? self.results.items[row] : nil;
-    NSString *typedText = self.field.stringValue;
+    NSString *typedText = self.field.stringValue, *query = self.typed;
     [self close];
     if (!it) {
         // Nothing listed (e.g. ⌘L with the URL untouched): treat the field as an address/search.
         if (!typedText.length) return;
         it = [TweakItem new];
         it.kind = TweakItemURL;
-        it.url = TweakResolveInput(typedText);
+        it.url = TweakResolveURL(typedText) ?: [self.sources searchURLFor:typedText];  // the user's search engine, not Google
     }
     switch (it.kind) {
         case TweakItemCommand: {
@@ -423,6 +429,8 @@ static NSColor *detailColor(void) { return dyn(1, 0.58, 0, 0.64); }
             NSString *url = it.url;
             // The URL row reflects what's in the field, including an accepted completion.
             if (it.kind == TweakItemURL && ![typedText isEqualToString:it.title]) url = TweakResolveInput(typedText);
+            // A Search row clicked before its results refreshed searches what's typed now (without the completion).
+            if (it.kind == TweakItemSearch && ![query isEqualToString:it.title]) url = [self.sources searchURLFor:query];
             if (!url) return;
             if (self.mode == TweakCommandBarNewTab || forceNewTab) TweakOpenInNewTab(w, url);
             else TweakNavigateWindow(w, url);

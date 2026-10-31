@@ -184,7 +184,7 @@ static NSColor *dyn(CGFloat darkWhite, CGFloat darkAlpha, CGFloat lightWhite, CG
     _profileNumberPopup.controlSize = NSControlSizeSmall;
     _profileNumberPopup.font = [NSFont systemFontOfSize:NSFont.smallSystemFontSize];
     NSEventModifierFlags ctrl = NSEventModifierFlagControl, opt = NSEventModifierFlagOption, cmd = NSEventModifierFlagCommand;
-    for (NSArray *m in @[@[@"⌃1 … ⌃9", @(ctrl)], @[@"⌥1 … ⌥9", @(opt)], @[@"⌃⌥1 … ⌃⌥9", @(ctrl | opt)], @[@"⌃⌘1 … ⌃⌘9", @(ctrl | cmd)], @[@"None", @0]]) {
+    for (NSArray *m in @[@[@"⌃1 … ⌃9", @(ctrl)], @[@"⌃⌥1 … ⌃⌥9", @(ctrl | opt)], @[@"⌃⌘1 … ⌃⌘9", @(ctrl | cmd)], @[@"None", @0]]) {
         [_profileNumberPopup addItemWithTitle:m[0]];
         _profileNumberPopup.lastItem.tag = [m[1] integerValue];
     }
@@ -442,9 +442,11 @@ static void hookedSelectionDidChange(id self, SEL _cmd, NSNotification *n) {
 void TweakPreferencesInstall(void) {
     Class cls = NSClassFromString(kListClass);
     if (!cls) { NSLog(@"[daypatch] %@ not found; settings pane inactive", kListClass); return; }
-    origNumberOfRows = (void *)TweakHook(cls, @selector(numberOfRowsInTableView:), (IMP)hookedNumberOfRows);
-    origViewForRow = (void *)TweakHook(cls, @selector(tableView:viewForTableColumn:row:), (IMP)hookedViewForRow);
-    origSelectionDidChange = (void *)TweakHook(cls, @selector(tableViewSelectionDidChange:), (IMP)hookedSelectionDidChange);
-    if (!origNumberOfRows || !origViewForRow || !origSelectionDidChange)
-        NSLog(@"[daypatch] settings hooks incomplete");
+    SEL sels[] = {@selector(numberOfRowsInTableView:), @selector(tableView:viewForTableColumn:row:), @selector(tableViewSelectionDidChange:)};
+    // All or nothing: an extra row without its cell and selection hooks crashes Dia's Settings.
+    for (int i = 0; i < 3; i++)
+        if (!class_getInstanceMethod(cls, sels[i])) { NSLog(@"[daypatch] %@ lacks %@; settings pane inactive", kListClass, NSStringFromSelector(sels[i])); return; }
+    origNumberOfRows = (void *)TweakHook(cls, sels[0], (IMP)hookedNumberOfRows);
+    origViewForRow = (void *)TweakHook(cls, sels[1], (IMP)hookedViewForRow);
+    origSelectionDidChange = (void *)TweakHook(cls, sels[2], (IMP)hookedSelectionDidChange);
 }

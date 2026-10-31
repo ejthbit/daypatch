@@ -54,10 +54,11 @@ IMP TweakHook(Class cls, SEL sel, IMP imp);
 // Dia scripting bridge: the active tab object for a window (DiaAppleScriptTab), or nil.
 id TweakActiveTabForWindow(NSWindow *window);
 NSString *TweakURLForWindow(NSWindow *window);
-void TweakNavigateWindow(NSWindow *window, NSString *input);
+void TweakNavigateWindow(NSWindow *window, NSString *url);  // url is final; typed text goes through TweakResolveInput first
 void TweakOpenInNewTab(NSWindow *window, NSString *url);
 void TweakFocusTab(NSString *windowId, NSString *tabId);
-NSString *TweakResolveInput(NSString *input);
+NSString *TweakResolveURL(NSString *input);     // typed text → URL, or nil if it reads as a search
+NSString *TweakResolveInput(NSString *input);   // same, but searches fall back to Google
 
 // Modules.
 void TweakNavBarInstall(void);

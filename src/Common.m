@@ -1,5 +1,6 @@
 #import "Common.h"
 #import <objc/runtime.h>
+#import <arpa/inet.h>
 
 NSNotificationName const TweakSettingsDidChangeNotification = @"TweakSettingsDidChangeNotification";
 static NSString *const TweakKeyMode = @"daypatch.urlBarMode";
@@ -127,28 +128,47 @@ NSString *TweakURLForWindow(NSWindow *window) {
     } @catch (__unused NSException *e) { return nil; }
 }
 
-NSString *TweakResolveInput(NSString *input) {
-    NSString *s = [input stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    if (!s.length) return nil;
-    NSRegularExpression *scheme = [NSRegularExpression regularExpressionWithPattern:@"^[a-zA-Z][a-zA-Z0-9+.-]*:(//)?[^\\s]*$" options:0 error:nil];
-    BOOL hasSpace = [s rangeOfCharacterFromSet:NSCharacterSet.whitespaceCharacterSet].location != NSNotFound;
-    if (!hasSpace && [scheme firstMatchInString:s options:0 range:NSMakeRange(0, s.length)] &&
-        ([s containsString:@"://"] || [s hasPrefix:@"about:"] || [s hasPrefix:@"chrome:"] || [s hasPrefix:@"file:"] || [s hasPrefix:@"mailto:"]))
-        return s;
-    NSString *host = [s componentsSeparatedByString:@"/"].firstObject;
-    BOOL local = [host hasPrefix:@"localhost"] || [host hasPrefix:@"127."] || [host hasSuffix:@".localhost"] || [host hasSuffix:@".test"];
-    if (!hasSpace && (local || ([host containsString:@"."] && ![host hasSuffix:@"."])))
-        return [(local ? @"http://" : @"https://") stringByAppendingString:s];
-    NSString *template = @"https://www.google.com/search?q=%@";  // only reached for non-URL input
-    NSMutableCharacterSet *allowed = [NSCharacterSet.URLQueryAllowedCharacterSet mutableCopy];
-    [allowed removeCharactersInString:@"&=+?#"];
-    return [NSString stringWithFormat:template, [s stringByAddingPercentEncodingWithAllowedCharacters:allowed]];
+// 10/8, 127/8, 169.254/16, 172.16/12, 192.168/16.
+static BOOL isPrivateIPv4(NSString *host) {
+    struct in_addr a;
+    if (inet_pton(AF_INET, host.UTF8String, &a) != 1) return NO;
+    uint32_t ip = ntohl(a.s_addr);
+    return ip >> 24 == 10 || ip >> 24 == 127 || ip >> 16 == 0xA9FE || ip >> 20 == 0xAC1 || ip >> 16 == 0xC0A8;
 }
 
-void TweakNavigateWindow(NSWindow *window, NSString *input) {
-    NSString *url = TweakResolveInput(input);
+NSString *TweakResolveURL(NSString *input) {
+    NSString *s = [input stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (!s.length) return nil;
+    NSRegularExpression *scheme = [NSRegularExpression regularExpressionWithPattern:@"^([a-zA-Z][a-zA-Z0-9+.-]*):(//)?[^\\s]*$" options:0 error:nil];
+    BOOL hasSpace = [s rangeOfCharacterFromSet:NSCharacterSet.whitespaceCharacterSet].location != NSNotFound;
+    NSTextCheckingResult *m = hasSpace ? nil : [scheme firstMatchInString:s options:0 range:NSMakeRange(0, s.length)];
+    if (m && ([m rangeAtIndex:2].location != NSNotFound ||
+              [@[@"about", @"chrome", @"file", @"mailto", @"javascript", @"data", @"blob", @"view-source", @"tel"]
+                  containsObject:[s substringWithRange:[m rangeAtIndex:1]].lowercaseString]))
+        return s;
+    NSString *host = [s componentsSeparatedByCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"/?#"]].firstObject;
+    NSString *name = ([host hasPrefix:@"["] ? host : [host componentsSeparatedByString:@":"].firstObject).lowercaseString;
+    BOOL local = [host hasPrefix:@"["] || [name isEqualToString:@"localhost"] || [name hasSuffix:@".localhost"] ||
+                 [name hasSuffix:@".test"] || [name hasSuffix:@".local"] || isPrivateIPv4(name);
+    if (!hasSpace && (local || ([host containsString:@"."] && ![host hasSuffix:@"."])))
+        return [(local ? @"http://" : @"https://") stringByAppendingString:s];
+    return nil;
+}
+
+NSString *TweakResolveInput(NSString *input) {
+    NSString *url = TweakResolveURL(input);
+    if (url) return url;
+    NSString *s = [input stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (!s.length) return nil;
+    NSMutableCharacterSet *allowed = [NSCharacterSet.URLQueryAllowedCharacterSet mutableCopy];
+    [allowed removeCharactersInString:@"&=+?#"];
+    NSString *q = [s stringByAddingPercentEncodingWithAllowedCharacters:allowed];  // nil for a lone UTF-16 surrogate
+    return q ? [@"https://www.google.com/search?q=" stringByAppendingString:q] : nil;
+}
+
+void TweakNavigateWindow(NSWindow *window, NSString *url) {
     id tab = TweakActiveTabForWindow(window);
-    if (!url || !tab) return;
+    if (!url.length || !tab) return;
     @try { [tab setValue:url forKey:@"URL"]; }
     @catch (NSException *e) { NSLog(@"[daypatch] navigate failed: %@", e); }
 }
