@@ -2,6 +2,27 @@
 
 Each release's notes come from its section here (the release workflow requires one).
 
+## 0.12.4
+
+Fixes from a full code review.
+
+**Dia ✦**
+- 🩹 The shortcut recorder no longer swallows every key once you click away from Settings, and accepts F2–F12; shortcuts need ⌃ or ⌘ (⌥+digit types characters on many layouts, so the ⌥1…⌥9 profile option is gone).
+- 🩹 Fixed a possible crash when windows close, and when a stray character is pasted into the command bar.
+- 🔐 DayPatch no longer overwrites Dia's own settings: page-content extraction and telemetry sampling are only changed while *Hide AI* / *Block telemetry* are on, and Dia's values come back when they're off. Values earlier versions wrote are cleared once.
+- ⌨️ Command bar: Backspace removes an autocompletion; Enter never acts on results from an earlier keystroke; bookmarklets, `data:` and `view-source:` URLs open as themselves; plain text searches with your search engine; new bookmarks and search-engine changes show up without restarting; the active profile's history is used; accented searches match any case.
+- 🧭 Typed addresses: LAN addresses (`192.168.x.x`, `*.local`, `[::1]`) open over http, schemes are matched in any case.
+- 🗂️ Sorting and grouping tabs never moves pinned tabs or tabs from another profile; `example.com.` groups with `example.com`.
+- ⌨️ ⌘T, ⌘L and ⌃⌘U work with Caps Lock on.
+- 🛡️ Safer against Dia updates: hooks install all-or-nothing instead of half-way.
+
+**DayPatch**
+- 🩹 Never replaces Dia while it (or the original Dia during a passkey handoff) is running or has just updated itself; an interrupted swap is recovered instead of leaving Dia missing.
+- 🩹 A failed self-update puts the old DayPatch back; the background job and login item follow DayPatch when it's moved.
+- 🩹 A failing automatic patch waits for you instead of retrying every 2 minutes; the window no longer freezes while checking Dia's signature.
+- 🩹 The background job notices Dia starting and quitting; switching to a separate copy works before Dia was ever patched; the old profile merge runs only once.
+- 🔢 Pre-release versions (`1.3.0-beta`) compare correctly and are published as pre-releases.
+
 ## 0.12.3
 
 - 🫥 With the URL bar in the sidebar, Dia's top bar stays hidden while the sidebar is collapsed (e.g. in focus mode) instead of popping back each time the sidebar slides away.
