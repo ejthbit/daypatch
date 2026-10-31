@@ -24,7 +24,7 @@ enum PatchError: LocalizedError {
 }
 
 struct PatchStatus {
-    enum State { case upToDate, needsPatch(String), notInstalled, diaMissing, restored }
+    enum State { case upToDate, needsPatch(String), notInstalled, diaMissing, restored, checking }
     var state: State
     var diaVersion: String?
     var patchedFrom: String?
@@ -34,7 +34,7 @@ extension PatchStatus {
     var isUpToDate: Bool { if case .upToDate = state { return true }; return false }
 }
 
-final class PatchEngine {
+final class PatchEngine: Sendable {
     /// The installed Dia. DAYPATCH_DIA_PATH points it elsewhere for testing.
     static var source: URL {
         URL(fileURLWithPath: ProcessInfo.processInfo.environment["DAYPATCH_DIA_PATH"] ?? "/Applications/Dia.app")
@@ -144,8 +144,9 @@ final class PatchEngine {
         return NSWorkspace.shared.runningApplications.contains { $0.bundleURL?.resolvingSymlinksInPath().path == path }
     }
 
-    /// Is the app DayPatch would replace running? (Dia itself in place; the copy otherwise.)
-    static var patchedIsRunning: Bool { isRunning(destination) }
+    /// Is an app DayPatch would replace running? Dia itself and its backup (the passkey
+    /// handoff runs it) in place; the copy otherwise.
+    static var patchedIsRunning: Bool { isRunning(destination) || (mode == .inPlace && isRunning(backup)) }
     static var diaIsRunning: Bool { isRunning(source) }
 
     private func withLock<T>(_ body: () throws -> T) throws -> T {
@@ -160,12 +161,15 @@ final class PatchEngine {
     /// Runs off the main thread; takes ~10 s (APFS clone + signing).
     func patch() throws {
         let fm = FileManager.default
-        guard fm.fileExists(atPath: Self.source.path) else { throw PatchError.diaMissing }
         // Everything below goes into the browser: refuse a tampered DayPatch.app.
         guard Self.signatureValid(Bundle.main.bundleURL) else { throw PatchError.step("DayPatch.app was modified. Reinstall it, then patch again.") }
-        guard !Self.patchedIsRunning else { throw PatchError.patchedRunning }
         Migration.mergeSplitProfiles()
         try withLock {
+            Self.recoverSwap(at: Self.source)
+            Self.recoverSwap(at: Self.copyDestination)
+            guard fm.fileExists(atPath: Self.source.path) else { throw PatchError.diaMissing }
+            guard !Self.patchedIsRunning else { throw PatchError.patchedRunning }
+            let startBuild = Self.info(Self.source)?["CFBundleVersion"] as? String
             let inPlace = Self.mode == .inPlace
             // Verify before backing up, so a tampered Dia never replaces a good backup.
             let original = inPlace && Self.isPatched(Self.source) ? Self.backup : Self.source
@@ -224,6 +228,11 @@ final class PatchEngine {
             guard (plist as NSDictionary).write(to: plistURL, atomically: true) else { throw PatchError.step("Writing Info.plist failed") }
 
             try run("/usr/bin/codesign", ["-f", "-s", "-", "--options", "runtime", "--entitlements", entitlements.path, staging.path], "Signing Dia ✦")
+            // The build takes a while: Dia may have started, or updated itself, meanwhile.
+            guard !Self.patchedIsRunning else { throw PatchError.patchedRunning }
+            if inPlace, (Self.info(Self.source)?["CFBundleVersion"] as? String) != startBuild {
+                throw PatchError.step("Dia changed while it was being patched. Patch again.")
+            }
             try Self.swapIn(staging, at: target)
             Self.restoredByUser = false
         }
@@ -235,12 +244,13 @@ final class PatchEngine {
         let fm = FileManager.default
         guard Self.mode == .inPlace else { return }
         guard !Self.diaIsRunning else { throw PatchError.patchedRunning }
-        guard fm.fileExists(atPath: Self.backup.path) else { throw PatchError.noBackup }
-        guard Self.signatureValid(Self.backup, requirement: Self.diaRequirement) else {
-            throw PatchError.step("The original Dia backup was modified. Reinstall Dia instead.")
-        }
         try withLock {
-            if !Self.isPatched(Self.source) { return }   // already stock
+            Self.recoverSwap(at: Self.source)
+            if !Self.isPatched(Self.source) { return }   // already stock (or never patched): no backup needed
+            guard fm.fileExists(atPath: Self.backup.path) else { throw PatchError.noBackup }
+            guard Self.signatureValid(Self.backup, requirement: Self.diaRequirement) else {
+                throw PatchError.step("The original Dia backup was modified. Reinstall Dia instead.")
+            }
             let staging = Self.source.deletingLastPathComponent().appendingPathComponent(".Dia.app.daypatch-restore")
             try? fm.removeItem(at: staging)
             try run("/bin/cp", ["-cR", Self.backup.path, staging.path], "Restoring the original Dia")
@@ -269,17 +279,29 @@ final class PatchEngine {
         }
     }
 
+    private static func aside(_ target: URL) -> URL {
+        target.deletingLastPathComponent().appendingPathComponent(".\(target.lastPathComponent).daypatch-old")
+    }
+
+    /// An interrupted swapIn (killed between its two moves) leaves the app aside: put it back.
+    private static func recoverSwap(at target: URL) {
+        let fm = FileManager.default
+        if !fm.fileExists(atPath: target.path), fm.fileExists(atPath: aside(target).path) { try? fm.moveItem(at: aside(target), to: target) }
+    }
+
     /// Replaces `target` with `staging` (same folder): old one aside, new one in, old one removed.
     private static func swapIn(_ staging: URL, at target: URL) throws {
         let fm = FileManager.default
-        let old = target.deletingLastPathComponent().appendingPathComponent(".\(target.lastPathComponent).daypatch-old")
+        let old = aside(target)
         try? fm.removeItem(at: old)
         do {
             if fm.fileExists(atPath: target.path) { try fm.moveItem(at: target, to: old) }
             try fm.moveItem(at: staging, to: target)
-        } catch let e as NSError where e.domain == NSCocoaErrorDomain && (e.code == NSFileWriteNoPermissionError || e.code == 513) {
-            if !fm.fileExists(atPath: target.path), fm.fileExists(atPath: old.path) { try? fm.moveItem(at: old, to: target) }
-            throw PatchError.permission
+        } catch {
+            recoverSwap(at: target)
+            let e = error as NSError
+            if e.domain == NSCocoaErrorDomain && e.code == NSFileWriteNoPermissionError { throw PatchError.permission }
+            throw error
         }
         if (try? fm.removeItem(at: old)) == nil { try? fm.trashItem(at: old, resultingItemURL: nil) }
         _ = try? PatchEngine.runTool("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
