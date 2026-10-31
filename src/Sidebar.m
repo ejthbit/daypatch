@@ -202,7 +202,8 @@ static void applyContainer(NSView *c) {
         objc_setAssociatedObject(c, kGapKey, @(H - NSMaxY(body.frame)), OBJC_ASSOCIATION_RETAIN);
     CGFloat gap = [objc_getAssociatedObject(c, kGapKey) doubleValue];
 
-    BOOL on = TweakSettings.urlBarMode == TweakURLBarModeSidebar && !c.isHiddenOrHasHiddenAncestor;
+    // Attached even while the sidebar is collapsed, so the top bar stays hidden then.
+    BOOL on = TweakSettings.urlBarMode == TweakURLBarModeSidebar;
     TweakSidebarURLBar *bar = barFor(c);
     if (on && !bar) {
         bar = [[TweakSidebarURLBar alloc] initWithFrame:NSZeroRect];
@@ -263,7 +264,13 @@ static TweakSidebarURLBar *visibleBar(NSWindow *window) {
     return nil;
 }
 
-BOOL TweakSidebarHasURLBar(NSWindow *window) { return visibleBar(window) != nil; }
+// Whether the top bar should give way: true while the window's sidebar has the bar,
+// also when the sidebar is collapsed (Arc-like: no top bar either way).
+BOOL TweakSidebarHasURLBar(NSWindow *window) {
+    for (NSView *c in gContainers.allObjects)
+        if (c.window == window && barFor(c).superview) return YES;
+    return NO;
+}
 
 BOOL TweakSidebarFocusURLBar(NSWindow *window) { return [visibleBar(window) openEditor]; }
 
@@ -274,12 +281,12 @@ void TweakSidebarInstall(void) {
     origLayout = (void *)TweakHook(cls, @selector(layout), (IMP)hookedLayout);
     // Refresh on navigation-ish events: Dia's window title follows the active tab's
     // page title, and switching windows/tabs changes it too. A slow timer covers
-    // pages that change URL without changing title. Re-applying here too: at launch
-    // the container's first layouts run before the sidebar is ready, and nothing
-    // lays it out again.
+    // pages that change URL without changing title. Also attaches a bar the container's
+    // layout couldn't (its header or body not there yet): nothing may lay it out again.
+    // Add-only, so a transient hide never flips back to the top bar.
     void (^refreshAll)(void) = ^{
         for (NSView *c in gContainers.allObjects) {
-            reapplyContainer(c);
+            if (!barFor(c).superview) reapplyContainer(c);
             [barFor(c) refresh];
         }
     };

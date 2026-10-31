@@ -2,6 +2,11 @@
 
 Each release's notes come from its section here (the release workflow requires one).
 
+## 0.12.3
+
+- 🫥 With the URL bar in the sidebar, Dia's top bar stays hidden while the sidebar is collapsed (e.g. in focus mode) instead of popping back each time the sidebar slides away.
+- 🩹 The sidebar URL bar is added right away at launch, even while the sidebar is still hidden.
+
 ## 0.12.2
 
 - 🩹 The sidebar URL bar and ← → ↻ buttons appear when Dia ✦ starts, not only after switching with ⌃⌘U.
