@@ -2,6 +2,13 @@
 
 Each release's notes come from its section here (the release workflow requires one).
 
+## 0.12.1
+
+- 🔐 DayPatch is signed with the hardened runtime, so other programs can't inject code into it through `DYLD_INSERT_LIBRARIES` and use its App Management permission.
+- 🛡️ DayPatch re-patches Dia ✦ when its signature no longer verifies (for example a swapped `daypatch.dylib`), and only patches or restores a Dia signed by The Browser Company.
+- 🔑 Updates come from this fork (`ejthbit/daypatch`), signed with its own key.
+- 🩹 Relaunching after an update no longer builds a shell command from the app's path.
+
 ## 0.12.0
 
 - ⌨️ **Extra shortcuts** (Settings › DayPatch › Shortcuts, off by default, each one changeable): sort tabs by domain (⌃⌥S), group tabs by domain (⌃⌥G), next / previous profile (⌃⌥→ / ⌃⌥←), move the current tab to the next profile (⌃⌥⇧→), and switch to profile 1–9 (⌃1…⌃9).
