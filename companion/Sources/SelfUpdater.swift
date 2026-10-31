@@ -27,7 +27,7 @@ enum SelfUpdateError: LocalizedError {
 }
 
 enum SelfUpdater {
-    static var repo: String { Bundle.main.object(forInfoDictionaryKey: "DayPatchRepo") as? String ?? "TA3/daypatch" }
+    static var repo: String { Bundle.main.object(forInfoDictionaryKey: "DayPatchRepo") as? String ?? "ejthbit/daypatch" }
     static var publicKey: String? {
         (Bundle.main.object(forInfoDictionaryKey: "DayPatchUpdatePublicKey") as? String).flatMap { $0.isEmpty ? nil : $0 }
     }

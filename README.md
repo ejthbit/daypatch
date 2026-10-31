@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/TA3/daypatch/actions/workflows/ci.yml"><img src="https://github.com/TA3/daypatch/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/TA3/daypatch/releases/latest"><img src="https://img.shields.io/github/v/release/TA3/daypatch" alt="Latest release"></a>
+  <a href="https://github.com/ejthbit/daypatch/actions/workflows/ci.yml"><img src="https://github.com/ejthbit/daypatch/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/ejthbit/daypatch/releases/latest"><img src="https://img.shields.io/github/v/release/ejthbit/daypatch" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
   <img src="https://img.shields.io/badge/macOS-14%2B%20·%20Apple%20silicon-lightgrey" alt="macOS 14+, Apple silicon">
 </p>
@@ -32,7 +32,7 @@
 
 | Step | Do this |
 | :---: | --- |
-| **1** | ⬇️ Download **DayPatch.zip** from the [latest release](https://github.com/TA3/daypatch/releases/latest) |
+| **1** | ⬇️ Download **DayPatch.zip** from the [latest release](https://github.com/ejthbit/daypatch/releases/latest) |
 | **2** | 📂 Unzip it and drag **DayPatch.app** into **Applications** |
 | **3** | 🚀 Quit Dia, open DayPatch and click **Patch** |
 
@@ -51,7 +51,7 @@
 You need Xcode or its command line tools (`xcode-select --install`).
 
 ```bash
-git clone https://github.com/TA3/daypatch.git
+git clone https://github.com/ejthbit/daypatch.git
 cd daypatch
 ./companion/build.sh --launch
 ```

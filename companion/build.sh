@@ -12,7 +12,7 @@ ROOT="$(cd "$HERE/.." && pwd)"
 OUT="$ROOT/build/DayPatch.app"
 DEST="$HOME/Applications/DayPatch.app"
 VERSION="$(cat "$ROOT/VERSION")"
-REPO="${DAYPATCH_REPO:-TA3/daypatch}"
+REPO="${DAYPATCH_REPO:-ejthbit/daypatch}"
 # Public key that update downloads must be signed with (see scripts/make-update-key.sh).
 UPDATE_KEY="${DAYPATCH_UPDATE_PUBLIC_KEY:-$(cat "$HERE/update-public-key.txt" 2>/dev/null || true)}"
 

@@ -19,4 +19,4 @@ echo "Public key:  $PUBLIC (commit it)"
 echo "Private key: $PRIVATE (keep it secret; back it up somewhere safe)"
 echo
 echo "Store the private key for GitHub Actions:"
-echo "  gh secret set DAYPATCH_UPDATE_PRIVATE_KEY --repo TA3/daypatch < \"$PRIVATE\""
+echo "  gh secret set DAYPATCH_UPDATE_PRIVATE_KEY --repo ejthbit/daypatch < \"$PRIVATE\""
