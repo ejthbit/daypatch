@@ -80,6 +80,22 @@ final class PatchEngine {
 
     static func isPatched(_ app: URL) -> Bool { info(app)?["DayPatchPatchVersion"] != nil }
 
+    /// The Browser Company's Developer ID: the only signer accepted for a pristine Dia.
+    static let diaRequirement = #"anchor apple generic and certificate leaf[subject.OU] = "S6N382Y83G""#
+
+    /// `codesign --verify --strict`: catches swapped nested code (e.g. daypatch.dylib) or a
+    /// re-signed bundle. With `requirement`, the signer must also match it.
+    static func signatureValid(_ app: URL, requirement: String? = nil) -> Bool {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        p.arguments = ["--verify", "--strict"] + (requirement.map { ["-R", "=" + $0] } ?? []) + [app.path]
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        guard (try? p.run()) != nil else { return false }
+        p.waitUntilExit()
+        return p.terminationStatus == 0
+    }
+
     /// Set when the user chose Restore Original Dia: don't re-patch until they ask.
     static var restoredByUser: Bool {
         get { UserDefaults.standard.bool(forKey: "restoredByUser") }
@@ -100,6 +116,7 @@ final class PatchEngine {
             var s = PatchStatus(state: .upToDate, diaVersion: Self.version(Self.backup) ?? Self.version(Self.source), patchedFrom: Self.version(Self.source))
             if (src["DayPatchPatchVersion"] as? String) != patchVersion { s.state = .needsPatch("New DayPatch version") }
             else if !FileManager.default.fileExists(atPath: Self.backup.path) { s.state = .needsPatch("Original backup missing") }
+            else if !Self.signatureValid(Self.source) { s.state = .needsPatch("\(Self.appName) was modified") }
             return s
         }
         let diaBuild = src["CFBundleVersion"] as? String
@@ -115,6 +132,8 @@ final class PatchEngine {
             s.state = .needsPatch("Dia was updated")
         } else if (dst["DayPatchPatchVersion"] as? String) != patchVersion {
             s.state = .needsPatch("New DayPatch version")
+        } else if !Self.signatureValid(Self.copyDestination) {
+            s.state = .needsPatch("\(Self.appName) was modified")
         }
         return s
     }
@@ -142,10 +161,18 @@ final class PatchEngine {
     func patch() throws {
         let fm = FileManager.default
         guard fm.fileExists(atPath: Self.source.path) else { throw PatchError.diaMissing }
+        // Everything below goes into the browser: refuse a tampered DayPatch.app.
+        guard Self.signatureValid(Bundle.main.bundleURL) else { throw PatchError.step("DayPatch.app was modified. Reinstall it, then patch again.") }
         guard !Self.patchedIsRunning else { throw PatchError.patchedRunning }
         Migration.mergeSplitProfiles()
         try withLock {
             let inPlace = Self.mode == .inPlace
+            // Verify before backing up, so a tampered Dia never replaces a good backup.
+            let original = inPlace && Self.isPatched(Self.source) ? Self.backup : Self.source
+            guard fm.fileExists(atPath: original.path) else { throw PatchError.noBackup }
+            guard Self.signatureValid(original, requirement: Self.diaRequirement) else {
+                throw PatchError.step("\(original.lastPathComponent) isn't an untouched Dia signed by The Browser Company. Reinstall Dia, then patch again.")
+            }
             let pristine: URL
             if inPlace {
                 // A stock Dia (first patch, or freshly updated by Dia) becomes the new backup.
@@ -209,6 +236,9 @@ final class PatchEngine {
         guard Self.mode == .inPlace else { return }
         guard !Self.diaIsRunning else { throw PatchError.patchedRunning }
         guard fm.fileExists(atPath: Self.backup.path) else { throw PatchError.noBackup }
+        guard Self.signatureValid(Self.backup, requirement: Self.diaRequirement) else {
+            throw PatchError.step("The original Dia backup was modified. Reinstall Dia instead.")
+        }
         try withLock {
             if !Self.isPatched(Self.source) { return }   // already stock
             let staging = Self.source.deletingLastPathComponent().appendingPathComponent(".Dia.app.daypatch-restore")

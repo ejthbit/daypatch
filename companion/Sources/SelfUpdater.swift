@@ -104,8 +104,9 @@ enum SelfUpdater {
     static func relaunch(arguments: [String] = []) {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/sh")
-        let args = arguments.isEmpty ? "" : " --args " + arguments.joined(separator: " ")
-        p.arguments = ["-c", "sleep 1; /usr/bin/open \"\(Bundle.main.bundlePath)\"\(args)"]
+        // Path and arguments go in as positional parameters, never into the script text.
+        p.arguments = ["-c", #"sleep 1; app="$1"; shift; if [ $# -gt 0 ]; then exec /usr/bin/open "$app" --args "$@"; else exec /usr/bin/open "$app"; fi"#,
+                       "sh", Bundle.main.bundlePath] + arguments
         try? p.run()
     }
 
